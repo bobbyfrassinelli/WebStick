@@ -1,27 +1,104 @@
-(async function() {
-    // Create the sticky note container
-    const noteDiv = document.createElement('div');
-    noteDiv.id = 'sticky-note';
+(function() {
+    const pageUrl = window.location.href;
+    
+    // Get notes for this page from storage using callback
+    chrome.storage.local.get([pageUrl], (storageData) => {
+      let notes = storageData[pageUrl] || [];
   
-    // Create textarea inside sticky note
-    const noteTextarea = document.createElement('textarea');
-    noteDiv.appendChild(noteTextarea);
+      // Render existing notes
+      notes.forEach(noteData => {
+        createNoteElement(noteData);
+      });
   
-    document.body.appendChild(noteDiv);
+      // Listen for messages from the popup to add a note
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === "addNote") {
+          const newNote = {
+            id: `note_${Date.now()}`,
+            content: "",
+            x: 100, y: 100,
+            width: 200, height: 150
+          };
+          notes.push(newNote);
+          updateNotesInStorage();
+          createNoteElement(newNote);
+        }
+      });
   
-    // Get the current page URL (without query params/hash if desired)
-    const pageUrl = window.location.origin + window.location.pathname;
+      function createNoteElement(noteData) {
+        const noteDiv = document.createElement('div');
+        noteDiv.classList.add('sticky-note');
+        noteDiv.style.position = 'fixed';
+        noteDiv.style.left = noteData.x + 'px';
+        noteDiv.style.top = noteData.y + 'px';
+        noteDiv.style.width = noteData.width + 'px';
+        noteDiv.style.height = noteData.height + 'px';
+        noteDiv.style.zIndex = 999999;
   
-    // Load saved notes from chrome.storage
-    const storageData = await chrome.storage.local.get([pageUrl]);
-    if (storageData[pageUrl]) {
-      noteTextarea.value = storageData[pageUrl];
-    }
+        const textarea = document.createElement('textarea');
+        textarea.value = noteData.content;
+        textarea.addEventListener('input', () => {
+          noteData.content = textarea.value;
+          updateNotesInStorage();
+        });
   
-    // Listen for changes in the textarea and save them
-    noteTextarea.addEventListener('input', async () => {
-      const noteContent = noteTextarea.value;
-      await chrome.storage.local.set({ [pageUrl]: noteContent });
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'X';
+        deleteBtn.style.position = 'absolute';
+        deleteBtn.style.top = '0';
+        deleteBtn.style.right = '0';
+        deleteBtn.addEventListener('click', () => {
+          notes = notes.filter(n => n.id !== noteData.id);
+          updateNotesInStorage();
+          noteDiv.remove();
+        });
+  
+        noteDiv.appendChild(textarea);
+        noteDiv.appendChild(deleteBtn);
+        document.body.appendChild(noteDiv);
+  
+        // Implement dragging
+        let isDragging = false, offsetX=0, offsetY=0;
+        noteDiv.addEventListener('mousedown', (e) => {
+          // Allow dragging if clicked on note or textarea background
+          if (e.target === noteDiv || e.target === textarea) {
+            isDragging = true;
+            offsetX = e.clientX - noteDiv.offsetLeft;
+            offsetY = e.clientY - noteDiv.offsetTop;
+            document.body.style.userSelect = 'none';
+          }
+        });
+        document.addEventListener('mousemove', (e) => {
+          if (isDragging) {
+            noteDiv.style.left = (e.clientX - offsetX) + 'px';
+            noteDiv.style.top = (e.clientY - offsetY) + 'px';
+          }
+        });
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false;
+            document.body.style.userSelect = '';
+            // Update position in storage
+            noteData.x = parseInt(noteDiv.style.left);
+            noteData.y = parseInt(noteDiv.style.top);
+            noteData.width = parseInt(noteDiv.style.width);
+            noteData.height = parseInt(noteDiv.style.height);
+            updateNotesInStorage();
+          }
+        });
+  
+        // Observe style changes (like resizing)
+        const observer = new MutationObserver(() => {
+          noteData.width = parseInt(noteDiv.style.width);
+          noteData.height = parseInt(noteDiv.style.height);
+          updateNotesInStorage();
+        });
+        observer.observe(noteDiv, { attributes: true, attributeFilter: ['style'] });
+      }
+  
+      function updateNotesInStorage() {
+        chrome.storage.local.set({ [pageUrl]: notes });
+      }
     });
   })();
   
