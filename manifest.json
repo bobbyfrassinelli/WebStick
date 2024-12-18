@@ -1,0 +1,16 @@
+{
+    "name": "WebStick",
+    "version": "1.0",
+    "manifest_version": 3,
+    "description": "Add persistent sticky notes to any website.",
+    "permissions": ["storage", "activeTab", "scripting"],
+    "host_permissions": ["<all_urls>"],
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["content.js"],
+        "css": ["style.css"]
+      }
+    ]
+  }
+  
